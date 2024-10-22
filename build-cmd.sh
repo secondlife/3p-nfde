@@ -30,12 +30,63 @@ pushd "$NFD_SOURCE_DIR"
 
         # ------------------------ windows, windows64 ------------------------
         windows*)
+        load_vsvars
+
+        opts="$(replace_switch /Zi /Z7 $LL_BUILD_RELEASE)"
+        plainopts="$(remove_switch /GR $(remove_cxxstd $opts))"
+
+        mkdir -p "build"
+        pushd "build"
+            cmake -G "Ninja Multi-Config" .. -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_C_FLAGS="$plainopts" \
+            -DCMAKE_CXX_FLAGS="$opts" \
+            -DCMAKE_INSTALL_PREFIX="$(cygpath -m $stage)" \
+            -DCMAKE_INSTALL_LIBDIR="$(cygpath -m "$stage/lib/release")" \
+            -DCMAKE_INSTALL_INCLUDEDIR="$(cygpath -m "$stage/include/nfde")"
+
+            cmake --build . --config Release
+            cmake --install . --config Release
+
+            # conditionally run unit tests
+            if [ "${DISABLE_UNIT_TESTS:-0}" = "0" ]; then
+                ctest -C Release
+            fi
+        popd
 
         ;;
 
         # ------------------------- darwin, darwin64 -------------------------
         darwin*)
+            export MACOSX_DEPLOYMENT_TARGET="$LL_BUILD_DARWIN_DEPLOY_TARGET"
 
+            for arch in x86_64 arm64 ; do
+                ARCH_ARGS="-arch $arch"
+                cc_opts="${TARGET_OPTS:-$ARCH_ARGS $LL_BUILD_RELEASE}"
+                cc_opts="$(remove_cxxstd $cc_opts)"
+
+                mkdir -p "build_$arch"
+                pushd "build_$arch"
+                    cmake .. -G "Ninja Multi-Config" -DBUILD_SHARED_LIBS:BOOL=OFF \
+                        -DCMAKE_BUILD_TYPE="Release" \
+                        -DCMAKE_C_FLAGS="$cc_opts" \
+                        -DCMAKE_CXX_FLAGS="$cc_opts" \
+                        -DCMAKE_INSTALL_PREFIX="$stage" \
+                        -DCMAKE_INSTALL_LIBDIR="$stage/lib/release/$arch" \
+                        -DCMAKE_INSTALL_INCLUDEDIR="$stage/include/nfde" \
+                        -DCMAKE_OSX_ARCHITECTURES="$arch" \
+                        -DCMAKE_OSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET}
+
+                    cmake --build . --config Release
+                    cmake --install . --config Release
+
+                    # conditionally run unit tests
+                    if [ "${DISABLE_UNIT_TESTS:-0}" = "0" -a "$arch" = "$(uname -m)" ]; then
+                        ctest -C Release
+                    fi
+                popd
+            done
+
+            lipo -create -output "$stage/lib/release/libnfd.a" "$stage/lib/release/x86_64/libnfd.a" "$stage/lib/release/arm64/libnfd.a" 
         ;;            
 
         # -------------------------- linux, linux64 --------------------------

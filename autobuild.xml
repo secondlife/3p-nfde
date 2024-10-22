@@ -44,6 +44,7 @@
           <key>manifest</key>
           <array>
             <string>include/nfde/*.h</string>
+            <string>include/nfde/*.hpp</string>
             <string>LICENSES/nfde.txt</string>
           </array>
           <key>name</key>
